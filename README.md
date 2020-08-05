@@ -18,7 +18,7 @@ This project aims to filter fake news from Twitter using:
 2. [rtweet package](https://cran.r-project.org/web/packages/rtweet/rtweet.pdf)
 3. [newsanchor package](https://cran.r-project.org/web/packages/newsanchor/)
 4. [Hoaxy](https://rapidapi.com/truthy/api/hoaxy/details)
-
+5. [Hoaxy API integration in R](https://github.com/news-r/hoaxy/)
 ## Process
 
 1. Obtaining training set:
