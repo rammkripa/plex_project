@@ -25,5 +25,12 @@ tweets %>%
   mutate(tweet_id = as.numeric(tweet_id)) %>%
   summarize(tweet_id = max(tweet_id))
 library(rtweet)
-
-
+?lookup_tweets
+# Lookup Tweets seems to work to give the text of the tweet
+a <- lookup_tweets(statuses = "749649358237433856", parse = TRUE)
+library(tidytext)
+a %>%
+  unnest_tokens(output = "tweet_words",
+                input = "text",
+                token = "words") %>%
+  select(tweet_words)
