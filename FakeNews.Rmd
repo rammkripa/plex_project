@@ -59,7 +59,8 @@ renderPlot({
                   token = "words") %>%
     select(screen_name,created_at,tweet_words) %>%
     anti_join(stop_words, by = c("tweet_words" = "word")) %>%
-    filter(tweet_words!="amp")
+    filter(tweet_words!="amp",
+           tweet_words!=tolower(input$input_name))
     #%>%
     #mutate(tweet_words = SnowballC::wordStem(tweet_words))
   
