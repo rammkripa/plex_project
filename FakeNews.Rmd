@@ -21,18 +21,27 @@ library(here)
 library(shiny)
 ```
 
-# Fake News
+## Part 1: Creating the Fake News Detection Engine
 
-### Creating the Dataset
+### Creating the Training Dataset
 
 ```{r}
-print("Hello")
+
 ```
 
+### Cleaning
 
-## Interactive Environment
+### Most common Words in Fake and Real News
 
-## Please Enter a Twitter Handle
+### Creating the Document Term Matrix
+
+### Training the Model
+
+### Words that make news Fake
+
+## Part 2: Interactive Environment
+
+### Please Enter a Twitter Handle
 
 ```{r input_handle, echo=FALSE}
 inputPanel(
@@ -41,8 +50,6 @@ inputPanel(
 )
 
 ```
-
-## Analysis
 
 ### Most Common Words in Recent Tweets
 
