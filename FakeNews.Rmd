@@ -37,7 +37,7 @@ print("Hello")
 ```{r input_handle, echo=FALSE}
 inputPanel(
   textInput("input_name", label = "Twitter Username",
-              value = "katyperry")
+              value = "realDonaldTrump")
 )
 
 ```
