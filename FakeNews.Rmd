@@ -25,15 +25,21 @@ library(shiny)
 
 ### Creating the Training Dataset
 
-```{r}
-fake_news_topics = c("pizzagate","flat earth","aliens")
+```{r realnews}
+
+real_news <- get_timelines(c("reuters","bbcworld"))
+```
+
+```{r fake}
+fake_news_topics = c("pizzagate","plandemic","chemtrails","george soros","5G","Bush did 911","anti vax")
 
 articles_list <- list()
 for (topic in fake_news_topics){
   articles_list[[topic]] <- hx_articles(q = topic)
 }
 
-articles_df <- bind_rows(articles_list,.id = "topic") 
+articles_df <- bind_rows(articles_list,.id = "topic") %>%
+  head(n=300L)
 tweets_df <- hx_tweets(ids = unique(articles_df$id))
 relevant_tweets <- tweets_df %>%
   group_by(id) %>%
@@ -46,17 +52,53 @@ rel_tweet_df <- lookup_tweets(relevant_tweets$tweet_id)
 
 ### Cleaning
 
-### Most common Words in Fake and Real News
-
 ```{r}
+remove_ats <- function(stringy){
+  first_part <- stringr::str_remove(stringy,"@(.*)")
+  second_part <- stringr::str_remove(stringy,"(.*)@")
+  second_part <- stringr::str_remove(second_part,".*? ")
+  return(stringr::str_c(first_part,second_part,sep = " "))
+}
 
-rel_tweet_df %>%
+tweet_text_df <- rel_tweet_df %>%
+  rowwise() %>%
+  mutate(text = remove_ats(text)) %>%
   mutate(text = sub("http.*", "", text) ) %>%
+  filter(text!="",text!=" ")%>%
   unnest_tokens(output = "tweet_words",
                 input = text,
                 token = "words") %>%
+  select(user_id,status_id,screen_name,created_at,source,tweet_words) %>%
   anti_join(stop_words, by = c("tweet_words"="word")) %>%
-  mutate(tweet_words = SnowballC::wordStem(tweet_words)) %>%
+  
+  mutate(tweet_words = SnowballC::wordStem(tweet_words))
+
+```
+
+### Cleaning Real news
+
+```{r}
+real_news_terms <- real_news %>%
+  rowwise() %>%
+  mutate(text = remove_ats(text)) %>%
+  mutate(text = sub("http.*", "", text) ) %>%
+  filter(text!="",text!=" ")%>%
+  unnest_tokens(output = "tweet_words",
+                input = text,
+                token = "words") %>%
+  select(user_id,status_id,screen_name,created_at,source,tweet_words) %>%
+  anti_join(stop_words, by = c("tweet_words"="word")) %>%
+  
+  mutate(tweet_words = SnowballC::wordStem(tweet_words))
+
+```
+
+Is your friend spreading COVID misinformation?
+Find out now!
+
+```{r}
+
+tweet_text_df %>%
   group_by(tweet_words) %>%
   summarize(count = n()) %>%
   arrange(-count) %>%
@@ -71,7 +113,38 @@ rel_tweet_df %>%
 
 ```
 
+### Binding
+
+```{r}
+blist <- list()
+blist[["fake news"]] = tweet_text_df
+blist[["real news"]] = real_news_terms
+training_day <- bind_rows(blist,.id = "Type")
+```
+
+### Term Frequency in Real and Fake News
+
+```{r}
+
+training_day %>%
+  group_by(tweet_words,Type) %>%
+  summarize(count = n()) %>%
+  group_by(Type) %>%
+  top_n(n = 10, wt = count) %>%
+  ggplot(mapping = aes(x = tweet_words, y = count))+
+  geom_col()+
+  coord_flip()+
+  facet_wrap(~Type,scales = "free")
+
+```
+
+
 ### Creating the Document Term Matrix
+
+```{r dtm}
+text_tfidf %>%
+cast_dtm(document = )
+```
 
 ### Training the Model
 
