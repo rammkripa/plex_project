@@ -1,33 +1,80 @@
 ---
-title: 'Faux & Friends: A Fake News Detection Service'
+title: 'Faux & Friends: A Fake News Detection and Analysis Service'
 author: "Allen Chen, Ram Mukund Kripa"
 date: "8/4/2020"
 output: html_document
 runtime: shiny
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
 ```
 
-This project takes in a twitter username and outputs a detailed report of whether they are fake news or not.
+### Packages used in this Project
 
-## Inputs
+```{r packages}
+library(tidyverse)
+library(hoaxy)
+library(rtweet)
+library(tidytext)
+library(here)
+library(shiny)
+```
 
-```{r eruptions, echo=FALSE}
+# Fake News
+
+### Creating the Dataset
+
+```{r}
+print("Hello")
+```
+
+
+## Interactive Environment
+
+## Please Enter a Twitter Handle
+
+```{r input_handle, echo=FALSE}
 inputPanel(
-  selectInput("n_breaks", label = "Number of bins:",
-              choices = c(10, 20, 35, 50), selected = 20),
-  
-  sliderInput("bw_adjust", label = "Bandwidth adjustment:",
-              min = 0.2, max = 2, value = 1, step = 0.2)
+  textInput("input_name", label = "Twitter Username",
+              value = "katyperry")
 )
 
+```
+
+## Analysis
+
+### Most Common Words in Recent Tweets
+
+```{r plot}
 renderPlot({
-  hist(faithful$eruptions, probability = TRUE, breaks = as.numeric(input$n_breaks),
-       xlab = "Duration (minutes)", main = "Geyser eruption duration")
+ 
+  user_dat <- get_timeline(user = input$input_name,
+                           n = 3200
+                           )
+  user_clean <- user_dat %>%
+    mutate(text = sub("http.*", "", text) ) %>%
+    unnest_tokens(output = "tweet_words",
+                  input = text,
+                  token = "words") %>%
+    select(screen_name,created_at,tweet_words) %>%
+    anti_join(stop_words, by = c("tweet_words" = "word")) %>%
+    filter(tweet_words!="amp")
+    #%>%
+    #mutate(tweet_words = SnowballC::wordStem(tweet_words))
   
-  dens <- density(faithful$eruptions, adjust = input$bw_adjust)
-  lines(dens, col = "blue")
+  user_clean %>%
+    group_by(tweet_words) %>%
+    summarize(count = n()) %>%
+    arrange(-count) %>%
+    head(n = 6L) %>%
+    ggplot(mapping = aes(x = reorder(tweet_words,count),
+                         y = count))+
+      geom_col()+
+      coord_flip()+
+      labs(title = glue::glue("Most Common Words for ",input$input_name),
+           x = "Word Stem",
+           y = "Number of Occurences")
+  
 })
 ```
