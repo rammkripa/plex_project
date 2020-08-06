@@ -26,12 +26,50 @@ library(shiny)
 ### Creating the Training Dataset
 
 ```{r}
+fake_news_topics = c("pizzagate","flat earth","aliens")
+
+articles_list <- list()
+for (topic in fake_news_topics){
+  articles_list[[topic]] <- hx_articles(q = topic)
+}
+
+articles_df <- bind_rows(articles_list,.id = "topic") 
+tweets_df <- hx_tweets(ids = unique(articles_df$id))
+relevant_tweets <- tweets_df %>%
+  group_by(id) %>%
+  summarize(title = max(title),
+            tweet_id = max(tweet_id))
+
+rel_tweet_df <- lookup_tweets(relevant_tweets$tweet_id)
 
 ```
 
 ### Cleaning
 
 ### Most common Words in Fake and Real News
+
+```{r}
+
+rel_tweet_df %>%
+  mutate(text = sub("http.*", "", text) ) %>%
+  unnest_tokens(output = "tweet_words",
+                input = text,
+                token = "words") %>%
+  anti_join(stop_words, by = c("tweet_words"="word")) %>%
+  mutate(tweet_words = SnowballC::wordStem(tweet_words)) %>%
+  group_by(tweet_words) %>%
+  summarize(count = n()) %>%
+  arrange(-count) %>%
+  head(n = 10L) %>%
+  ggplot(mapping = aes(x=reorder(tweet_words,count),
+                       y = count))+
+  geom_col()+
+  coord_flip()+
+  labs(x = "Word Stems",
+       y = "Count",
+       title = "Most Common words in Fake News")
+
+```
 
 ### Creating the Document Term Matrix
 
@@ -43,7 +81,7 @@ library(shiny)
 
 ### Please Enter a Twitter Handle
 
-```{r input_handle, echo=FALSE}
+```{r input_handle, echo=FALSE, eval = FALSE}
 inputPanel(
   textInput("input_name", label = "Twitter Username",
               value = "realDonaldTrump")
@@ -53,7 +91,7 @@ inputPanel(
 
 ### Most Common Words in Recent Tweets
 
-```{r plot}
+```{r plot, eval = FALSE}
 renderPlot({
  
   user_dat <- get_timeline(user = input$input_name,
