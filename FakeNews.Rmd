@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = FALSE)
 
 ### Packages used in this Project
 
-```{r packages}
+```{r packages, include = FALSE}
 library(tidyverse)
 library(hoaxy)
 library(rtweet)
@@ -25,28 +25,53 @@ library(shiny)
 
 ### Creating the Training Dataset
 
-```{r realnews}
+#### Obtaining some Real News
 
-real_news <- get_timelines(c("reuters","bbcworld"))
+```{r real}
+real_news <- get_timelines(c("reuters","bbcworld"),
+                           n = 1000)
+real_corona <- real_news %>%
+  mutate(text = tolower(text)) %>%
+  filter(str_detect(string = text, 
+                    pattern = str_c("covid","corona","pandemic","virus",sep = "|")))
 ```
 
+#### Obtaining some Fake News
+
 ```{r fake}
-fake_news_topics = c("pizzagate","plandemic","chemtrails","george soros","5G","Bush did 911","anti vax")
+fake_news_topics = c("plandemic","pandemic","5G","coronavirus","covid")
 
 articles_list <- list()
 for (topic in fake_news_topics){
-  articles_list[[topic]] <- hx_articles(q = topic)
+  articles_list[[topic]] <- hx_articles(q = topic,
+                                        sort_by = c("relevant"))
 }
 
-articles_df <- bind_rows(articles_list,.id = "topic") %>%
-  head(n=300L)
-tweets_df <- hx_tweets(ids = unique(articles_df$id))
-relevant_tweets <- tweets_df %>%
-  group_by(id) %>%
-  summarize(title = max(title),
-            tweet_id = max(tweet_id))
+fake_articles_corona <- bind_rows(articles_list,.id = "topic") %>%
+  distinct(canonical_url,.keep_all = TRUE) %>%
+  filter(site_type == "claim",score>120)
 
-rel_tweet_df <- lookup_tweets(relevant_tweets$tweet_id)
+fake_tweets_corona  <- hx_tweets(ids = unique(fake_articles_corona$id))
+
+fake_corona <- fake_tweets_corona %>%
+  group_by(id) %>%
+  top_n(n = 7, wt = tweet_id)
+
+fake_covid <- lookup_tweets(fake_corona$tweet_id)
+
+head(fake_covid)
+
+```
+
+#### Merging real and fake news
+
+```{r merging}
+train_list <- list()
+train_list[["Real"]] <- real_corona
+train_list[["Fake"]] <- fake_covid
+
+training_day <- bind_rows(train_list,.id = "class") %>%
+  select(class,screen_name,status_id,text,source,hashtags)
 
 ```
 
@@ -60,81 +85,77 @@ remove_ats <- function(stringy){
   return(stringr::str_c(first_part,second_part,sep = " "))
 }
 
-tweet_text_df <- rel_tweet_df %>%
+train_text_df <- training_day %>%
+  select(status_id,class,text) %>%
   rowwise() %>%
   mutate(text = remove_ats(text)) %>%
   mutate(text = sub("http.*", "", text) ) %>%
+  mutate(text = sub("amp.*", "", text) ) %>%
   filter(text!="",text!=" ")%>%
   unnest_tokens(output = "tweet_words",
                 input = text,
                 token = "words") %>%
-  select(user_id,status_id,screen_name,created_at,source,tweet_words) %>%
+  drop_na(tweet_words) %>%
+  filter(!str_detect(string = tweet_words,
+                    pattern = "[0-9]")) %>%
   anti_join(stop_words, by = c("tweet_words"="word")) %>%
-  
   mutate(tweet_words = SnowballC::wordStem(tweet_words))
 
 ```
 
-### Cleaning Real news
-
-```{r}
-real_news_terms <- real_news %>%
-  rowwise() %>%
-  mutate(text = remove_ats(text)) %>%
-  mutate(text = sub("http.*", "", text) ) %>%
-  filter(text!="",text!=" ")%>%
-  unnest_tokens(output = "tweet_words",
-                input = text,
-                token = "words") %>%
-  select(user_id,status_id,screen_name,created_at,source,tweet_words) %>%
-  anti_join(stop_words, by = c("tweet_words"="word")) %>%
-  
-  mutate(tweet_words = SnowballC::wordStem(tweet_words))
-
-```
-
-Is your friend spreading COVID misinformation?
-Find out now!
+### What are the most common words in Real and Fake News?
 
 ```{r}
 
-tweet_text_df %>%
-  group_by(tweet_words) %>%
+train_text_df %>%
+  mutate(tweet_words = iconv(tweet_words, from = "latin1", to = "ASCII")) %>%
+  filter(!is.na(tweet_words)) %>%
+  group_by(class,tweet_words) %>%
   summarize(count = n()) %>%
-  arrange(-count) %>%
-  head(n = 10L) %>%
-  ggplot(mapping = aes(x=reorder(tweet_words,count),
-                       y = count))+
+  top_n(n = 10,wt = count) %>%
+  ggplot(mapping = aes(x=reorder_within(tweet_words,count,class),
+                       y = count, fill = class))+
   geom_col()+
+  scale_x_reordered()+
+  facet_wrap(~class,scales="free")+
   coord_flip()+
   labs(x = "Word Stems",
        y = "Count",
-       title = "Most Common words in Fake News")
+       title = "Most Common words in Fake & Real News",
+       fill = "Type of News")
 
 ```
 
-### Binding
+Note that no model has been applied to this training data yet!
+What you see here is based only on the raw count of words in real and fake tweets.
 
-```{r}
-blist <- list()
-blist[["fake news"]] = tweet_text_df
-blist[["real news"]] = real_news_terms
-training_day <- bind_rows(blist,.id = "Type")
-```
-
-### Term Frequency in Real and Fake News
+### Applying Term Frequency - Inverse Document Frequency
 
 ```{r}
 
-training_day %>%
-  group_by(tweet_words,Type) %>%
+train_text_df %>%
+  mutate(tweet_words = iconv(tweet_words, from = "latin1", to = "ASCII")) %>%
+  filter(!is.na(tweet_words)) %>%
+  #ggplot(mapping = aes(x = class))+
+  #geom_bar()
+  group_by(class,tweet_words) %>%
   summarize(count = n()) %>%
-  group_by(Type) %>%
-  top_n(n = 10, wt = count) %>%
-  ggplot(mapping = aes(x = tweet_words, y = count))+
+  bind_tf_idf(term = tweet_words,
+              document = class,
+              n = count) %>%
+  group_by(class) %>%
+  top_n(n = 6, wt = tf_idf) %>%
+  ggplot(mapping = aes(x=reorder_within(tweet_words,tf_idf,class),
+                       y = tf_idf, fill = class))+
   geom_col()+
+  scale_x_reordered()+
+  facet_wrap(~class,scales="free_y")+
   coord_flip()+
-  facet_wrap(~Type,scales = "free")
+  labs(x = "Word Stems",
+       y = "TF-IDF Score",
+       title = "Word Stems in Fake & Real News with Highest TFIDF",
+       fill = "Type of News")
+  
 
 ```
 
@@ -142,8 +163,7 @@ training_day %>%
 ### Creating the Document Term Matrix
 
 ```{r dtm}
-text_tfidf %>%
-cast_dtm(document = )
+
 ```
 
 ### Training the Model
@@ -151,6 +171,9 @@ cast_dtm(document = )
 ### Words that make news Fake
 
 ## Part 2: Interactive Environment
+
+Is your friend spreading COVID misinformation?
+Find out now!
 
 ### Please Enter a Twitter Handle
 
