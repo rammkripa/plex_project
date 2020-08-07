@@ -273,6 +273,7 @@ new_data_dtm <- tibble("text"=random_tweets) %>%
            term = word,
            value = count
            )
+
 test_topics <- posterior(m,new_data_dtm)
 test_topics$topics
 apply(test_topics$topics,1,which.max)
