@@ -106,6 +106,7 @@ mutate(tweet_words = iconv(tweet_words, from = "latin1", to = "ASCII")) %>%
 ```
 
 ```{r}
+
 train_text_df %>%
   group_by(class) %>%
   summarize(n_words = n_distinct(tweet_words)) %>%
@@ -283,7 +284,8 @@ apply(test_topics$topics,1,which.max)
 
 ```{r vector}
 training_set <- bind_rows(listy,.id="Class") %>%
-  mutate(Class = as_factor(Class))
+  mutate(Class = as_factor(Class)) %>%
+  mutate(text = sub("http.*", "", text) )
 token_train <- itoken(training_set$text,
                      preprocessor = tolower,
                      tokenizer = word_tokenizer,
@@ -316,32 +318,7 @@ glmnet:::auc(training_set$Class, preds)
 
 ```
 
-```{r testnetmod}
-test_data <- get_timeline(
-  user = "realDonaldTrump",
-  n = 3200
-)
-test_set <- test_data %>%
-  mutate(text = tolower(text)) %>%
-  filter(str_detect(string = text,
-                    pattern = str_c("covid","corona","china","virus","pandemic","fauci","cdc",sep="|")
-                    )) %>%
-  select(status_id,text) %>%
-  rename("unique_id"="status_id")
 
-it_test <- word_tokenizer(test_set$text) %>%
-itoken(ids = test_set$unique_id, 
-                 # turn off progressbar because it won't look nice in rmd
-                 progressbar = FALSE)
-
-dtm_test <- create_dtm(it_test, t_vectorizer)
-
-preds <- predict(glmnet_classifier, dtm_test, type = 'response')[,1]
-#glmnet:::auc(test$sentiment, preds)
-
-
-
-```
 
 ### Words that make news Fake
 
@@ -395,3 +372,45 @@ renderPlot({
   
 })
 ```
+
+### Is this Account Fake News?
+
+```{r testnetmod}
+test2 <- get_timeline(user = "BreitbartNews",
+                           n = 3200
+                           )
+test_data <- user_dat
+test_set <- test2 %>%
+  mutate(text = tolower(text)) %>%
+  filter(str_detect(string = text,
+                    pattern = str_c("covid","corona","china","virus","pandemic","fauci","cdc",sep="|")
+                    )) %>%
+  select(status_id,text) %>%
+  rename("unique_id"="status_id") %>%
+  mutate(text = sub("http.*", "", text) )
+
+it_test <- word_tokenizer(test_set$text) %>%
+itoken(ids = test_set$unique_id, 
+                 # turn off progressbar because it won't look nice in rmd
+                 progressbar = FALSE)
+
+dtm_test <- create_dtm(it_test, t_vectorizer)
+
+preds <- predict(glmnet_classifier, dtm_test, type = 'response')
+#glmnet:::auc(test$sentiment, preds)
+
+test_result <- ifelse(test = any(preds<0.5),
+       yes = "Fake",
+       no = "Real")
+plot(glmnet_classifier)
+
+plot(preds)
+
+texty <- test_set %>%
+filter(unique_id == "1283163622215233539") %>%
+select(text)
+texty$text
+
+```
+
+This account is most probably `r test_result` news.

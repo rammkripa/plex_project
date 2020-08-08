@@ -1,0 +1,10 @@
+name: fakenews
+title:
+username:
+account: rammkripa
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2652657
+bundleId: 3490773
+url: https://rammkripa.shinyapps.io/fakenews/
+when: 1596902091.01912
