@@ -19,273 +19,14 @@ library(rtweet)
 library(tidytext)
 library(here)
 library(shiny)
+library(text2vec)
 ```
 
-## Part 1: Creating the Fake News Detection Engine
+```{r vectormodel, include = FALSE}
 
-### Creating the Training Dataset
+training_path <-  here("training","training_set.csv")
+training_set <- read_csv(training_path)
 
-#### Obtaining some Real News
-
-```{r real}
-real_news <- get_timelines(c("reuters","bbcworld"),
-                           n = 3000)
-real_corona <- real_news %>%
-  mutate(text = tolower(text)) %>%
-  filter(str_detect(string = text, 
-                    pattern = str_c("covid","corona","pandemic","virus",sep = "|")))
-```
-
-#### Obtaining some Fake News
-
-```{r fake}
-fake_news_topics = c("plandemic","pandemic","5G","coronavirus","covid","virus","fauci","cdc","who")
-
-articles_list <- list()
-for (topic in fake_news_topics){
-  articles_list[[topic]] <- hx_articles(q = topic,
-                                        sort_by = c("relevant"))
-}
-
-fake_articles_corona <- bind_rows(articles_list,.id = "topic") %>%
-  distinct(canonical_url,.keep_all = TRUE) %>%
-  filter(site_type == "claim")
-
-fake_tweets_corona  <- hx_tweets(ids = unique(fake_articles_corona$id))
-
-fake_corona <- fake_tweets_corona %>%
-  group_by(id) %>%
-  top_n(n = 20, wt = tweet_id)
-
-fake_covid <- lookup_tweets(fake_corona$tweet_id)
-
-head(fake_covid)
-
-```
-
-#### Merging real and fake news
-
-```{r merging}
-train_list <- list()
-train_list[["Real"]] <- real_corona
-train_list[["Fake"]] <- fake_covid
-
-training_day <- bind_rows(train_list,.id = "class") %>%
-  select(class,screen_name,status_id,text,source,hashtags)
-
-```
-
-### Cleaning
-
-```{r}
-remove_ats <- function(stringy){
-  first_part <- stringr::str_remove(stringy,"@(.*)")
-  second_part <- stringr::str_remove(stringy,"(.*)@")
-  second_part <- stringr::str_remove(second_part,".*? ")
-  return(stringr::str_c(first_part,second_part,sep = " "))
-}
-
-train_text_df <- training_day %>%
-  select(status_id,class,text) %>%
-  rowwise() %>%
-  mutate(text = remove_ats(text)) %>%
-  mutate(text = sub("http.*", "", text) ) %>%
-  mutate(text = sub("amp.*", "", text) ) %>%
-  filter(text!="",text!=" ")%>%
-  unnest_tokens(output = "tweet_words",
-                input = text,
-                token = "words") %>%
-  drop_na(tweet_words) %>%
-  filter(!str_detect(string = tweet_words,
-                    pattern = "[0-9]")) %>%
-  anti_join(stop_words, by = c("tweet_words"="word")) %>%
-  mutate(tweet_words = SnowballC::wordStem(tweet_words)) %>%
-mutate(tweet_words = iconv(tweet_words, from = "latin1", to = "ASCII")) %>%
-  filter(!is.na(tweet_words)) 
-
-```
-
-```{r}
-
-train_text_df %>%
-  group_by(class) %>%
-  summarize(n_words = n_distinct(tweet_words)) %>%
-  ggplot(mapping = aes(x = class, y = n_words)) +
-  geom_col()
-
-
-```
-
-### What are the most common words in Real and Fake News?
-
-```{r}
-
-train_text_df %>%
-  group_by(class,tweet_words) %>%
-  summarize(count = n()) %>%
-  top_n(n = 10,wt = count) %>%
-  ggplot(mapping = aes(x=reorder_within(tweet_words,count,class),
-                       y = count, fill = class))+
-  geom_col()+
-  scale_x_reordered()+
-  facet_wrap(~class,scales="free")+
-  coord_flip()+
-  labs(x = "Word Stems",
-       y = "Count",
-       title = "Most Common words in Fake & Real News",
-       fill = "Type of News")
-
-```
-
-Note that no model has been applied to this training data yet!
-What you see here is based only on the raw count of words in real and fake tweets.
-
-### Applying Term Frequency - Inverse Document Frequency
-
-```{r}
-
-train_text_df %>%
-  group_by(class,tweet_words) %>%
-  summarize(count = n()) %>%
-  bind_tf_idf(term = tweet_words,
-              document = class,
-              n = count) %>%
-  group_by(class) %>%
-  top_n(n = 6, wt = tf_idf) %>%
-  ggplot(mapping = aes(x=reorder_within(tweet_words,tf_idf,class),
-                       y = tf_idf, fill = class))+
-  geom_col()+
-  scale_x_reordered()+
-  facet_wrap(~class,scales="free")+
-  coord_flip()+
-  labs(x = "Word Stems",
-       y = "TF-IDF Score",
-       title = "Word Stems in Fake & Real News with Highest TFIDF",
-       fill = "Type of News")
-  
-
-```
-
-TF-IDF is a score that ranks each tweet word based on its frequency in Fake and Real News, but favors words that appear more frequently in just one of these categories.
-For example, the word "Plandemic" occurs far more frequently in Fake news than in Real news, and is hence the highest ranked term in the Fake News class.
-
-### Creating the Document Term Matrix
-
-```{r dtm}
-training_dtm <- train_text_df %>%
-  group_by(class,tweet_words) %>%
-  summarize(count=n()) %>%
-  cast_dtm(term = tweet_words,
-           document = class,
-           value = count,
-           weighting = tm::weightTfIdf)
-  
-
-```
-
-### Training the Model
-
-```{r}
-library(caret)
-news_model <- train(x = as.matrix(training_dtm),
-                     y = levels(factor(train_text_df$class)),
-                     method = "ranger",
-                     num.trees = 4,
-                     importance = "impurity",
-                     trControl = trainControl(method = "oob"))
-
-news_model$finalModel %>%
-  # importance
-  ranger::importance() %>%
-  # framing
-  enframe(name = "variable", value = "varimp") %>%
-  top_n(n = 20, wt = varimp) %>%
-  # plotting
-  ggplot(aes(x = fct_reorder(variable, varimp), y = varimp)) +
-  geom_col(fill = "purple") +
-  coord_flip() +
-  labs(x = "Tweet Word",
-       y = "Variable importance",
-       title = "Words that make Covid news Fake")
-  
-
-
-```
-
-```{r}
-listy <- list()
-listy[["Fake"]] <- fake_articles_corona %>%
-  select(canonical_url,title) %>%
-  rename("unique_id" = "canonical_url","text"="title")
-listy[["Real"]] <- real_corona %>%
-  select(status_id,text) %>%
-  rename("unique_id"="status_id")
-text_new <- bind_rows(listy,.id="Class") %>%
-  rowwise() %>%
-  mutate(text = remove_ats(text)) %>%
-  mutate(text = sub("http.*", "", text) ) %>%
-  mutate(text = sub("amp.*", "", text) ) %>%
-  filter(text!="",text!=" ")%>%
-  unnest_tokens(output = "word",
-                input = text,
-                token = "words") %>%
-  drop_na(word) %>%
-  filter(!str_detect(string = word,
-                    pattern = "[0-9]")) %>%
-  anti_join(stop_words) %>%
-  mutate(word = SnowballC::wordStem(word)) %>%
-mutate(word = iconv(word, from = "latin1", to = "ASCII")) %>%
-  filter(!is.na(word)) 
-
-m <- text_new %>%
-  group_by(unique_id,word) %>%
-  summarize(count = n()) %>%
-  cast_dtm(term = word,
-           document = unique_id,
-           value = count
-           ) %>%
-topicmodels::LDA(k = 2, control = list(seed = 123))
-
-library(topicmodels)  
-
-m %>%
-  tidy() %>%
-  group_by(topic) %>%
-  top_n(5, wt = beta) %>%
-  ungroup %>%
-  mutate(topic = as_factor(topic)) %>%
-  ggplot(mapping = aes(x = fct_reorder(term,beta), y = beta, fill = topic))+
-  geom_col()+
-  facet_wrap(~ topic, scales = "free")+
-  coord_flip()
-
-random_tweets <- c("coronavirus is a plandemic created by fauci","COVID deaths in India reach 200")
-
-new_data_dtm <- tibble("text"=random_tweets) %>%
-  mutate(doc=c("tweet1","tweet2")) %>%
-  unnest_tokens(output = "word",
-                input = "text",
-                token = "words") %>%
-  #anti_join(stop_words) %>%
-  #mutate(word = SnowballC::wordStem(word)) %>%
-  group_by(doc,word) %>%
-  summarize(count = n())%>%
-  cast_dtm(document = doc,
-           term = word,
-           value = count
-           )
-
-test_topics <- posterior(m,new_data_dtm)
-test_topics$topics
-apply(test_topics$topics,1,which.max)
-
-  
-```
-
-```{r vector}
-training_set <- bind_rows(listy,.id="Class") %>%
-  mutate(Class = as_factor(Class)) %>%
-  mutate(text = sub("http.*", "", text) )
 token_train <- itoken(training_set$text,
                      preprocessor = tolower,
                      tokenizer = word_tokenizer,
@@ -311,25 +52,21 @@ glmnet_classifier = cv.glmnet(x = dtm_train, y = training_set[['Class']],
                               maxit = 1e3)
 
 plot(glmnet_classifier)
-print(paste("max AUC =", round(max(glmnet_classifier$cvm), 4)))
+#print(paste("max AUC =", round(max(glmnet_classifier$cvm), 4)))
 
-preds <- predict(glmnet_classifier, newx = dtm_train, type = 'response')[,1]
-glmnet:::auc(training_set$Class, preds)
+#preds <- predict(glmnet_classifier, newx = dtm_train, type #= 'response')[,1]
+#glmnet:::auc(training_set$Class, preds)
 
 ```
 
-
-
-### Words that make news Fake
-
-## Part 2: Interactive Environment
+# Interactive Environment
 
 Is your friend spreading COVID misinformation?
 Find out now!
 
-### Please Enter a Twitter Handle
+## Please Enter a Twitter Handle
 
-```{r input_handle, echo=FALSE, eval = FALSE}
+```{r input_handle}
 inputPanel(
   textInput("input_name", label = "Twitter Username",
               value = "realDonaldTrump")
@@ -339,9 +76,9 @@ inputPanel(
 
 ### Most Common Words in Recent Tweets
 
-```{r plot, eval = FALSE}
+```{r plot}
+
 renderPlot({
- 
   user_dat <- get_timeline(user = input$input_name,
                            n = 3200
                            )
@@ -376,11 +113,15 @@ renderPlot({
 ### Is this Account Fake News?
 
 ```{r testnetmod}
-test2 <- get_timeline(user = "BreitbartNews",
+renderPlot({
+#test2 <- get_timeline(user = "BreitbartNews",
+#                          n = 3200
+#                         )
+  user_dat <- get_timeline(user = input$input_name,
                            n = 3200
                            )
 test_data <- user_dat
-test_set <- test2 %>%
+test_set <- test_data %>%
   mutate(text = tolower(text)) %>%
   filter(str_detect(string = text,
                     pattern = str_c("covid","corona","china","virus","pandemic","fauci","cdc",sep="|")
@@ -402,15 +143,10 @@ preds <- predict(glmnet_classifier, dtm_test, type = 'response')
 test_result <- ifelse(test = any(preds<0.5),
        yes = "Fake",
        no = "Real")
-plot(glmnet_classifier)
+#plot(glmnet_classifier)
 
 plot(preds)
 
-texty <- test_set %>%
-filter(unique_id == "1283163622215233539") %>%
-select(text)
-texty$text
+})
 
 ```
-
-This account is most probably `r test_result` news.
