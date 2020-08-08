@@ -316,6 +316,33 @@ glmnet:::auc(training_set$Class, preds)
 
 ```
 
+```{r testnetmod}
+test_data <- get_timeline(
+  user = "realDonaldTrump",
+  n = 3200
+)
+test_set <- test_data %>%
+  mutate(text = tolower(text)) %>%
+  filter(str_detect(string = text,
+                    pattern = str_c("covid","corona","china","virus","pandemic","fauci","cdc",sep="|")
+                    )) %>%
+  select(status_id,text) %>%
+  rename("unique_id"="status_id")
+
+it_test <- word_tokenizer(test_set$text) %>%
+itoken(ids = test_set$unique_id, 
+                 # turn off progressbar because it won't look nice in rmd
+                 progressbar = FALSE)
+
+dtm_test <- create_dtm(it_test, t_vectorizer)
+
+preds <- predict(glmnet_classifier, dtm_test, type = 'response')[,1]
+#glmnet:::auc(test$sentiment, preds)
+
+
+
+```
+
 ### Words that make news Fake
 
 ## Part 2: Interactive Environment
