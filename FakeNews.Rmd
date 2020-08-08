@@ -265,8 +265,8 @@ new_data_dtm <- tibble("text"=random_tweets) %>%
   unnest_tokens(output = "word",
                 input = "text",
                 token = "words") %>%
-  anti_join(stop_words) %>%
-  mutate(word = SnowballC::wordStem(word)) %>%
+  #anti_join(stop_words) %>%
+  #mutate(word = SnowballC::wordStem(word)) %>%
   group_by(doc,word) %>%
   summarize(count = n())%>%
   cast_dtm(document = doc,
@@ -279,6 +279,41 @@ test_topics$topics
 apply(test_topics$topics,1,which.max)
 
   
+```
+
+```{r vector}
+training_set <- bind_rows(listy,.id="Class") %>%
+  mutate(Class = as_factor(Class))
+token_train <- itoken(training_set$text,
+                     preprocessor = tolower,
+                     tokenizer = word_tokenizer,
+                     ids = training_set$unique_id)
+t_vocab <- create_vocabulary(token_train)
+t_vectorizer <- vocab_vectorizer(t_vocab)
+dtm_train <- create_dtm(token_train, t_vectorizer)
+dim(dtm_train)
+
+library(glmnet)
+NFOLDS = 4
+glmnet_classifier = cv.glmnet(x = dtm_train, y = training_set[['Class']], 
+                              family = 'binomial', 
+                              # L1 penalty
+                              alpha = 1,
+                              # interested in the area under ROC curve
+                              type.measure = "auc",
+                              # 5-fold cross-validation
+                              nfolds = NFOLDS,
+                              # high value is less accurate, but has faster training
+                              thresh = 1e-3,
+                              # again lower number of iterations for faster training
+                              maxit = 1e3)
+
+plot(glmnet_classifier)
+print(paste("max AUC =", round(max(glmnet_classifier$cvm), 4)))
+
+preds <- predict(glmnet_classifier, newx = dtm_train, type = 'response')[,1]
+glmnet:::auc(training_set$Class, preds)
+
 ```
 
 ### Words that make news Fake
