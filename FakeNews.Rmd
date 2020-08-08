@@ -52,10 +52,7 @@ glmnet_classifier = cv.glmnet(x = dtm_train, y = training_set[['Class']],
                               maxit = 1e3)
 
 plot(glmnet_classifier)
-#print(paste("max AUC =", round(max(glmnet_classifier$cvm), 4)))
 
-#preds <- predict(glmnet_classifier, newx = dtm_train, type #= 'response')[,1]
-#glmnet:::auc(training_set$Class, preds)
 
 ```
 
@@ -69,7 +66,8 @@ Find out now!
 ```{r input_handle}
 inputPanel(
   textInput("input_name", label = "Twitter Username",
-              value = "realDonaldTrump")
+              value = "realDonaldTrump"),
+  sliderInput(inputId = "num_recent", label = "Look at most Recent ____ Tweets", min = 200, max = 3000, value = 1200, step = 20)
 )
 
 ```
@@ -80,7 +78,7 @@ inputPanel(
 
 renderPlot({
   user_dat <- get_timeline(user = input$input_name,
-                           n = 3200
+                           n = input$num_recent
                            )
   user_clean <- user_dat %>%
     mutate(text = sub("http.*", "", text) ) %>%
@@ -110,15 +108,16 @@ renderPlot({
 })
 ```
 
-### Is this Account Fake News?
+Here, we see the Most Common words used by this user. These alone, however, do not tell us anything about the "Fake-ness" or "Real-ness" of this user's news. 
+
+### Does this Account post Fake News?
+
+We obtained a training dataset using the Hoaxy and Twitter APIs. Then, we used the Text2Vec Package in R to vectorize each token and trained a GLMNet Neural network model. This model, when applied to our Test Data, tells us the probability of a tweet spreading Fake News related to COVID 19.  
 
 ```{r testnetmod}
 renderPlot({
-#test2 <- get_timeline(user = "BreitbartNews",
-#                          n = 3200
-#                         )
   user_dat <- get_timeline(user = input$input_name,
-                           n = 3200
+                           n = input$num_recent
                            )
 test_data <- user_dat
 test_set <- test_data %>%
@@ -138,15 +137,41 @@ itoken(ids = test_set$unique_id,
 dtm_test <- create_dtm(it_test, t_vectorizer)
 
 preds <- predict(glmnet_classifier, dtm_test, type = 'response')
-#glmnet:::auc(test$sentiment, preds)
 
 test_result <- ifelse(test = any(preds<0.5),
        yes = "Fake",
        no = "Real")
-#plot(glmnet_classifier)
 
-plot(preds)
+prediction_tbl <- as_tibble(preds) %>%
+  mutate(tweet_no = seq(from = 1, to = length(preds), by = 1)) %>%
+  mutate(Class = ifelse(`1`>0.5,"Real","Fake")) %>%
+  mutate(Class = as_factor(Class)) 
+
+p1 <- prediction_tbl %>%
+  ggplot(mapping = aes(x = tweet_no, y = `1`,color = Class))+
+  geom_point()+
+  geom_hline(yintercept = 0.5)+
+  labs(x = "Tweet", y = "Probability of being Real News",
+       title = glue::glue("COVID Tweets of ",input$input_name," Classified"))
+p2 <- prediction_tbl %>%
+  ggplot(mapping = aes(x = Class, fill = Class))+
+  geom_bar(stat = "count")+
+  labs(x = "Type of News",
+       y = "Count",
+       title = "Relative Amount of Fake News")
+
+library(patchwork)
+
+p1+p2
 
 })
+
+```
+
+### Is this Account Fake News?
+
+This is a slightly different question. This module aims to find out whether the account itself primarily posts real or fake COVID news.
+
+```{r perc}
 
 ```
