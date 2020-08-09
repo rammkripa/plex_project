@@ -10,7 +10,6 @@ runtime: shiny
 knitr::opts_chunk$set(echo = FALSE)
 ```
 
-### Packages used in this Project
 
 ```{r packages, include = FALSE}
 library(tidyverse)
@@ -22,9 +21,26 @@ library(shiny)
 library(text2vec)
 ```
 
+```{r perc}
+api_key <- "r4UWPcaTY9JIa4w4Qr9lygsvR"
+api_secret_key <- "XYZ5j2ZFzTASaVGJjEi98DKg2pjhlRTqm4xervTlZToAKAvWko"
+access_token <- "3234588499-awSgTAungXRlOH5nrxGoqQWzdE0Q6VEM3HKwJSO"
+access_token_secret <- "umeZS3B6Qj1SQuWkWZWOHQJji2xEukew9pAgvZ8CfsB38"
+
+## store authentication information
+token <- create_token(
+  app = "CFSS test 2",
+  consumer_key = api_key,
+  consumer_secret = api_secret_key,
+  access_token = access_token,
+  access_secret = access_token_secret
+)
+
+```
+
 ```{r vectormodel, include = FALSE}
 
-training_path <-  here("training","training_set.csv")
+training_path <-  here("training_wheels.csv")
 training_set <- read_csv(training_path)
 
 token_train <- itoken(training_set$text,
@@ -56,10 +72,10 @@ plot(glmnet_classifier)
 
 ```
 
-# Interactive Environment
 
-Is your friend spreading COVID misinformation?
-Find out now!
+
+#Is your friend spreading COVID misinformation?
+#Find out now!
 
 ## Please Enter a Twitter Handle
 
@@ -170,8 +186,5 @@ p1+p2
 
 ### Is this Account Fake News?
 
-This is a slightly different question. This module aims to find out whether the account itself primarily posts real or fake COVID news.
+The second plot asks a slightly different question. It aims to find out whether the account itself primarily posts real or fake COVID news.
 
-```{r perc}
-
-```
