@@ -108,7 +108,7 @@ renderPlot({
     #%>%
     #mutate(tweet_words = SnowballC::wordStem(tweet_words))
   
-  user_clean %>%
+ p1 <-  user_clean %>%
     group_by(tweet_words) %>%
     summarize(count = n()) %>%
     arrange(-count) %>%
@@ -120,6 +120,19 @@ renderPlot({
       labs(title = glue::glue("Most Common Words for ",input$input_name),
            x = "Word Stem",
            y = "Number of Occurences")
+ 
+  library(ggwordcloud)
+ library(patchwork)
+ love_words
+ p2 <- user_clean %>%
+    group_by(tweet_words) %>%
+    summarize(count = n()) %>%
+   top_n(n = 20, wt = count) %>%
+   ggplot(mapping = aes(label = tweet_words,size = count))+
+   geom_text_wordcloud()
+ 
+ p1/p2
+   
   
 })
 ```
