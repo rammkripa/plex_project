@@ -74,8 +74,9 @@ plot(glmnet_classifier)
 
 
 
-#Is your friend spreading COVID misinformation?
-#Find out now!
+Is your friend spreading COVID misinformation?
+
+***Find out now!***
 
 ## Please Enter a Twitter Handle
 
