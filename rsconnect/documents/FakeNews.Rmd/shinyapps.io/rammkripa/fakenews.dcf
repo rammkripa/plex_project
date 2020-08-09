@@ -5,6 +5,6 @@ account: rammkripa
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 2653433
-bundleId: 3491770
+bundleId: 3493453
 url: https://rammkripa.shinyapps.io/fakenews/
-when: 1596933528.45203
+when: 1596982882.61486

@@ -1,4 +1,4 @@
-# Plex Project
+# Plex Project: Faux and Friends
 
 ## The Project
 This project aims to filter fake news from Twitter using:
